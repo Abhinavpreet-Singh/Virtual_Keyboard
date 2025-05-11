@@ -13,17 +13,17 @@ cap.set(4, 720)
 # Hand Detector - increased confidence for better detection
 detector = HandDetector(detectionCon=0.9, maxHands=1)
 
-# Keyboard Layout - Improved, straight layout with all necessary keys
+# Modern Keyboard Layout with improved aesthetics
 keys = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "⌫"],
-        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "'"],
-        ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";",],
-        ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", ],
-        ["SPACE",]]  # Complete keyboard layout with function keys
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "⏎"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";"],
+        ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"],
+        ["CTRL", "ALT", "SPACE", "←", "↑", "↓", "→"]]
 
 finalText = ""
 keyboard = Controller()
 
-# Color definitions - Modern color palette
+# Modern Color definitions - sleek and futuristic
 DARK_BG = (40, 44, 52)      # Dark background
 KEY_DARK = (59, 66, 82)     # Dark key color
 KEY_LIGHT = (97, 110, 136)  # Light key color (hover)
@@ -67,143 +67,246 @@ last_pinch_time = 0         # Time of last successful pinch
 key_cooldown = {}           # Dictionary to track key press cooldown
 KEY_COOLDOWN_TIME = 0.8     # Seconds to wait before allowing the same key again
 
-# Button Class for Virtual Keys
+# Create particle system for visual feedback
+class Particle:
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.vx = np.random.randint(-5, 6)
+        self.vy = np.random.randint(-5, 0)
+        self.lifetime = np.random.randint(10, 30)
+        
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.lifetime -= 1
+        return self.lifetime > 0
+    
+    def draw(self, img):
+        cv2.circle(img, (int(self.x), int(self.y)), 2, self.color, -1)
+        return img
+
+# List to hold active particles
+particles = []
+
+# Button Class for Virtual Keys with enhanced visual design
 class Button():
-    def __init__(self, pos, text, size=[85, 85]):
+    def __init__(self, pos, text, size=[90, 90]):
         self.pos = pos
         self.size = size
         self.text = text
         self.pressed = False  # Track if key is currently pressed
-
-# Drawing Function - Modern Design
-def drawAll(img, buttonList):
-    for button in buttonList:
-        x, y = button.pos
-        w, h = button.size
+        self.animation = 0  # For press animation
         
+    def draw(self, img):
+        x, y = self.pos
+        w, h = self.size
+        
+        # Animation effect when key is pressed (3D press effect)
+        offset = min(5, self.animation // 2)
+        if self.animation > 0:
+            self.animation -= 1
+            
         # Modern design for all keys
         # Draw key shadow for 3D effect
-        shadow_offset = 4
-        cv2.rectangle(img, (x+shadow_offset, y+shadow_offset), 
-                     (x+w+shadow_offset, y+h+shadow_offset), 
-                     (20, 20, 20), cv2.FILLED)
+        shadow_offset = 4 + offset
+        if not self.pressed:
+            cv2.rectangle(img, (x+shadow_offset, y+shadow_offset), 
+                        (x+w+shadow_offset, y+h+shadow_offset), 
+                        (20, 20, 20), cv2.FILLED)
         
         # Get gradient background based on key type
-        if button.text == "SPACE":
+        if self.pressed:
+            # Pressed state - different gradient
+            img = get_key_gradient(img, x+offset, y+offset, w, h, 
+                                  KEY_PRESS, (KEY_PRESS[0]//2, KEY_PRESS[1]//2, KEY_PRESS[2]//2), 
+                                  vertical=True)
+        elif self.text == "SPACE":
             # Spacebar has horizontal gradient
             img = get_key_gradient(img, x, y, w, h, KEY_DARK, KEY_LIGHT, vertical=False)
-        elif button.text == "⌫" or button.text == "⏎":
+        elif self.text == "⌫" or self.text == "⏎":
             # Function keys with slight variation
-            accent_dark = (KEY_PRESS[0]//2, KEY_PRESS[1]//2, KEY_PRESS[2]//2)
-            img = get_key_gradient(img, x, y, w, h, accent_dark, KEY_DARK, vertical=True)
+            accent_dark = (ACCENT[0]//2, ACCENT[1]//2, ACCENT[2]//2)
+            img = get_key_gradient(img, x, y, w, h, ACCENT, accent_dark, vertical=True)
+        elif self.text == "CTRL" or self.text == "ALT":
+            # Special function keys
+            img = get_key_gradient(img, x, y, w, h, (70, 75, 95), KEY_DARK, vertical=True)
+        elif self.text == "←" or self.text == "↑" or self.text == "→" or self.text == "↓":
+            # Arrow keys with distinct style
+            img = get_key_gradient(img, x, y, w, h, (90, 120, 90), (60, 80, 60), vertical=True)
         else:
             # Standard key gradient
             img = get_key_gradient(img, x, y, w, h, KEY_DARK, KEY_LIGHT, vertical=True)
         
         # Add glossy effect at the top
         gloss_height = h // 4
-        for i in range(gloss_height):
-            alpha = 0.4 * (1.0 - i/gloss_height)  # Fading transparency
-            cv2.line(img, (x+2, y+2+i), (x+w-2, y+2+i), 
-                    [int(255*alpha + c*(1-alpha)) for c in KEY_LIGHT], 1)
+        if not self.pressed:
+            for i in range(gloss_height):
+                alpha = 0.4 * (1.0 - i/gloss_height)  # Fading transparency
+                cv2.line(img, (x+2, y+2+i), (x+w-2, y+2+i), 
+                        [int(255*alpha + c*(1-alpha)) for c in KEY_LIGHT], 1)
         
         # Add rounded corners with modern look
         corner_radius = 15
-        cvzone.cornerRect(img, (x, y, w, h), corner_radius, rt=0, 
+        cvzone.cornerRect(img, (x+offset, y+offset, w, h), corner_radius, rt=0, 
                          colorC=KEY_BORDER, colorR=KEY_BORDER)
         
+        # Text color changes when pressed
+        text_color = WHITE if self.pressed else BRIGHT_TEXT
+        
         # Special cases for different key types
-        if button.text == "SPACE":
-            # Modern spacebar with subtle text
-            cv2.putText(img, "SPACE", (x + w//2 - 60, y + h//2 + 12),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.9, BRIGHT_TEXT, 2)  # Bright text
-        elif button.text == "⌫":
+        if self.text == "SPACE":
+            # Modern spacebar with subtle text and icon
+            cv2.line(img, (x+w//2-50, y+h//2), (x+w//2+50, y+h//2), text_color, 3)
+            cv2.putText(img, "SPACE", (x + w//2 - 60, y + h//2 + 25),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (text_color[0]//2, text_color[1]//2, text_color[2]//2), 2)
+        elif self.text == "⌫":
             # Backspace button with improved design - clean left arrow
-            arrow_start = (x + w - 25, y + h//2)
-            arrow_end = (x + 25, y + h//2)
-            
+            arrow_start = (x + w - 25 + offset, y + h//2 + offset)
+            arrow_end = (x + 25 + offset, y + h//2 + offset)
             # Draw the main arrow
-            cv2.arrowedLine(img, arrow_start, arrow_end, BRIGHT_TEXT, 3, tipLength=0.3)
-            
+            cv2.arrowedLine(img, arrow_start, arrow_end, text_color, 3, tipLength=0.3)
             # Add a small vertical line at the right to complete the backspace symbol
-            cv2.line(img, (x + w - 25, y + h//2 - 15), (x + w - 25, y + h//2 + 15), BRIGHT_TEXT, 3)
-        elif button.text == "⏎":
+            cv2.line(img, (x + w - 25 + offset, y + h//2 - 15 + offset), 
+                    (x + w - 25 + offset, y + h//2 + 15 + offset), text_color, 3)
+        elif self.text == "⏎":
             # Enter key with arrow symbol
-            arrow_start = (x + 30, y + h//2)
-            arrow_end = (x + w - 20, y + h//2)
-            
+            arrow_start = (x + 30 + offset, y + h//2 + offset)
+            arrow_end = (x + w - 20 + offset, y + h//2 + offset)
             # Draw horizontal line
-            cv2.line(img, (x + 30, y + h//2 - 15), (x + 30, y + h//2), BRIGHT_TEXT, 3)
-            
+            cv2.line(img, (x + 30 + offset, y + h//2 - 15 + offset), 
+                    (x + 30 + offset, y + h//2 + offset), text_color, 3)
             # Draw the return arrow
-            cv2.arrowedLine(img, arrow_start, arrow_end, BRIGHT_TEXT, 3, tipLength=0.3)
-        elif button.text == "←" or button.text == "↑" or button.text == "→" or button.text == "↓":
+            cv2.arrowedLine(img, arrow_start, arrow_end, text_color, 3, tipLength=0.3)
+        elif self.text == "←" or self.text == "↑" or self.text == "→" or self.text == "↓":
             # Arrow keys centered with bright text
-            text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
-            text_x = x + (w - text_size[0])//2
-            text_y = y + h//2 + 15
-            cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, BRIGHT_TEXT, 4)
+            text_size = cv2.getTextSize(self.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
+            text_x = x + offset + (w - text_size[0])//2
+            text_y = y + offset + h//2 + 15
+            cv2.putText(img, self.text, (text_x, text_y), 
+                       cv2.FONT_HERSHEY_PLAIN, 4, text_color, 4)
+        elif self.text == "CTRL" or self.text == "ALT":
+            # Function keys with smaller font
+            text_size = cv2.getTextSize(self.text, cv2.FONT_HERSHEY_PLAIN, 2, 2)[0]
+            text_x = x + offset + (w - text_size[0])//2
+            text_y = y + offset + h//2 + 8
+            cv2.putText(img, self.text, (text_x, text_y), 
+                       cv2.FONT_HERSHEY_PLAIN, 2, text_color, 2)
         else:
             # Standard keys with better centering and modern font
-            text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
-            text_x = x + (w - text_size[0])//2
-            text_y = y + h//2 + 15
-            cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, BRIGHT_TEXT, 4)
+            text_size = cv2.getTextSize(self.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
+            text_x = x + offset + (w - text_size[0])//2
+            text_y = y + offset + h//2 + 15
+            cv2.putText(img, self.text, (text_x, text_y), 
+                       cv2.FONT_HERSHEY_PLAIN, 4, text_color, 4)
             
-            # Add a subtle highlight under each letter
-            cv2.putText(img, button.text, (text_x+1, text_y+1), 
-                       cv2.FONT_HERSHEY_PLAIN, 4, (30, 30, 30), 1)
-            
-    return img
-
-# Create Buttons - improved layout with more consistency and proper spacing
-buttonList = []
-for i in range(len(keys)):
-    for j, key in enumerate(keys[i]):
-        # Base position calculations - ensure straight and consistent alignment
-        x_pos = 100 * j + 50
-        y_pos = 100 * i + 50
+            # Add a subtle highlight under each letter for 3D effect
+            if not self.pressed:
+                cv2.putText(img, self.text, (text_x+1, text_y+1), 
+                          cv2.FONT_HERSHEY_PLAIN, 4, (30, 30, 30), 1)
         
-        # Create a straight keyboard layout with consistent spacing
-        if key == "⌫":
-            # Make backspace key wider and more visible
-            buttonList.append(Button([x_pos, y_pos], key, size=[120, 85]))
-        elif key == "⏎":
-            # Make enter key wider and more visible
-            buttonList.append(Button([x_pos, y_pos], key, size=[120, 85]))
-        elif key == "SPACE":
-            # Make spacebar wider and position it centrally 
-            buttonList.append(Button([250, y_pos], key, size=[450, 85]))
-        elif key == "←" or key == "↑" or key == "→" or key == "↓":
-            # Arrow keys
-            buttonList.append(Button([x_pos, y_pos], key, size=[90, 85]))
-        elif key == "CTRL" or key == "ALT":
-            # Add function keys with appropriate size
-            buttonList.append(Button([x_pos, y_pos], key, size=[150, 85]))
-        else:
-            # Standard sized keys with consistent spacing
-            buttonList.append(Button([x_pos, y_pos], key, size=[90, 85]))
+        return img
+
+# Create modern ergonomic keyboard layout
+buttonList = []
+
+# Create a curved/ergonomic keyboard layout
+# Each row will have a slight arc for a more natural finger position
+row_offsets = [15, 30, 45, 35, 0]  # Pixel offsets for each row
+row_heights = [50, 150, 250, 350, 450]  # Y positions
+
+for i in range(len(keys)):
+    row_offset = row_offsets[i]  # Get offset for this row
+    y_pos = row_heights[i]
+    
+    # Calculate key width based on available space and number of keys in row
+    total_keys = len(keys[i])
+    key_width = 90  # Default key width
+    key_spacing = 10  # Space between keys
+    
+    # Calculate starting position to center the row
+    if i == 4:  # Special row with spacebar
+        # Distribute keys on bottom row with spacebar
+        x_positions = []
+        widths = []
+        
+        # Calculate widths for each key in bottom row
+        for k, key in enumerate(keys[i]):
+            if key == "SPACE":
+                widths.append(400)  # Spacebar width
+            elif key == "CTRL" or key == "ALT":
+                widths.append(120)  # Function key width
+            else:
+                widths.append(90)  # Arrow key width
+                
+        # Calculate total row width
+        total_row_width = sum(widths) + ((len(widths)-1) * key_spacing)
+        
+        # Start position for first key
+        x_start = (1280 - total_row_width) // 2
+        
+        # Place each key
+        x_pos = x_start
+        for k, key in enumerate(keys[i]):
+            buttonList.append(Button([x_pos, y_pos], key, size=[widths[k], 90]))
+            x_pos += widths[k] + key_spacing
+    else:
+        # Center the row horizontally for normal rows
+        total_row_width = (total_keys * key_width) + ((total_keys-1) * key_spacing)
+        x_start = (1280 - total_row_width) // 2 + row_offset
+        
+        # Create keys for this row
+        for j, key in enumerate(keys[i]):
+            x_pos = x_start + (j * (key_width + key_spacing))
+            
+            # Apply different visual styles based on key type
+            if key == "⌫":
+                # Backspace key - larger and distinctive
+                buttonList.append(Button([x_pos-10, y_pos], key, size=[130, 95]))
+            elif key == "⏎":
+                # Enter key - larger and distinctive
+                buttonList.append(Button([x_pos-10, y_pos], key, size=[130, 95]))
+            else:
+                # Standard keys with consistent modern look
+                buttonList.append(Button([x_pos, y_pos], key, size=[95, 95]))
 
 # Main Loop
 while True:
+    # Create dark modern background
+    img = np.ones((720, 1280, 3), np.uint8) * DARK_BG  # Dark background
+    
     # Get image from camera
-    success, img = cap.read()
+    success, camera_img = cap.read()
     if not success:
         print("Failed to grab frame")
         continue
         
     # Flip the image horizontally for a more natural interaction
-    img = cv2.flip(img, 1)
+    camera_img = cv2.flip(camera_img, 1)
+    
+    # Make camera feed smaller and position in corner
+    camera_h, camera_w = 180, 240
+    camera_img_resized = cv2.resize(camera_img, (camera_w, camera_h))
+    
+    # Place camera feed in top right corner with border
+    img[20:20+camera_h, 1280-20-camera_w:1280-20] = camera_img_resized
+    cv2.rectangle(img, (1280-20-camera_w-2, 18), (1280-18, 20+camera_h+2), 
+                 KEY_BORDER, 2)
     
     # Find hands
-    hands, img = detector.findHands(img)
+    hands, camera_img = detector.findHands(camera_img)
     
-    # Draw keyboard
-    img = drawAll(img, buttonList)
-    
-    # Reset button states
+    # Draw buttons
     for button in buttonList:
-        button.pressed = False
+        img = button.draw(img)
+    
+    # Update and draw particles for visual effects
+    for i in range(len(particles)-1, -1, -1):
+        if particles[i].update():
+            particles[i].draw(img)
+        else:
+            particles.pop(i)
     
     # Check for hand position
     if hands:
@@ -215,6 +318,19 @@ while True:
         index_tip = lmList[8]  # Index finger tip
         middle_tip = lmList[12]  # Middle finger tip
         thumb_base = lmList[2]  # Thumb base (near wrist)
+        
+        # Scale to match display size
+        thumb_tip = (thumb_tip[0] * camera_w // camera_img.shape[1], 
+                     thumb_tip[1] * camera_h // camera_img.shape[0])
+        index_tip = (index_tip[0] * camera_w // camera_img.shape[1], 
+                     index_tip[1] * camera_h // camera_img.shape[0])
+        thumb_base = (thumb_base[0] * camera_w // camera_img.shape[1], 
+                      thumb_base[1] * camera_h // camera_img.shape[0])
+        
+        # Adjust to full screen coordinates
+        thumb_tip = (1280-20-camera_w + thumb_tip[0], 20 + thumb_tip[1])
+        index_tip = (1280-20-camera_w + index_tip[0], 20 + index_tip[1])
+        thumb_base = (1280-20-camera_w + thumb_base[0], 20 + thumb_base[1])
         
         # Draw circles on fingertips for visual feedback
         cv2.circle(img, (thumb_tip[0], thumb_tip[1]), 10, WHITE, cv2.FILLED)
@@ -228,9 +344,10 @@ while True:
             
             # Calculate euclidean distance for more accuracy
             euclidean_distance = np.sqrt(vertical_distance**2 + horizontal_distance**2)
-              # Draw line between thumb and index finger
+            
+            # Draw line between thumb and index finger with nice visual
             cv2.line(img, (thumb_tip[0], thumb_tip[1]), (index_tip[0], index_tip[1]), 
-                    ACCENT, 3)
+                    (ACCENT[0], ACCENT[1], ACCENT[2], 150), 3)
             
             # Add visual reference for vertical distance
             midpoint_x = (thumb_tip[0] + index_tip[0]) // 2
@@ -239,9 +356,9 @@ while True:
             
             # Show distance measurements for debugging
             cv2.putText(img, f"V: {int(vertical_distance)}px", (45, 100), 
-                        cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 2)
+                        cv2.FONT_HERSHEY_PLAIN, 1.5, LIGHT_TEXT, 2)
             cv2.putText(img, f"D: {int(euclidean_distance)}px", (45, 130), 
-                        cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 2)
+                        cv2.FONT_HERSHEY_PLAIN, 1.5, LIGHT_TEXT, 2)
             
             # Check if thumb is raised relative to its base position
             thumb_raised = (thumb_tip[1] < thumb_base[1] - 30)
@@ -284,10 +401,6 @@ while True:
             # Check if index finger tip is over button
             if x < index_tip[0] < x + w and y < index_tip[1] < y + h:
                 current_time = time()
-                  # Highlight button with lighter color when hovering
-                cv2.rectangle(img, (x - 5, y - 5), (x + w + 5, y + h + 5), KEY_LIGHT, cv2.FILLED)
-                cv2.putText(img, button.text, (x + 20, y + 65),
-                            cv2.FONT_HERSHEY_PLAIN, 4, DARK_BG, 4)
                 
                 # Check if button is in cooldown
                 in_cooldown = False
@@ -308,46 +421,15 @@ while True:
                     
                     # Set cooldown for this key
                     key_cooldown[button.text] = current_time
-                    button.pressed = True                      # Visual feedback (turn button blue when clicked)
-                    cv2.rectangle(img, button.pos, (x + w, y + h), KEY_PRESS, cv2.FILLED)
+                    button.pressed = True
+                    button.animation = 10  # Start animation
                     
-                    # Keep consistent text positioning when clicked
-                    if button.text == "SPACE":
-                        cv2.putText(img, button.text, (x + w//2 - 60, y + h//2 + 15),
-                                    cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
-                    elif button.text == "⌫":
-                        # Draw improved backspace symbol with white color
-                        arrow_start = (x + w - 25, y + h//2)
-                        arrow_end = (x + 25, y + h//2)
-                        
-                        # Draw the main arrow line
-                        cv2.arrowedLine(img, arrow_start, arrow_end, WHITE, 3, tipLength=0.3)
-                        
-                        # Add a small vertical line at the right to complete the backspace symbol
-                        cv2.line(img, (x + w - 25, y + h//2 - 15), (x + w - 25, y + h//2 + 15), WHITE, 3)
-                    elif button.text == "⏎":
-                        # Enter key with white arrow symbol
-                        arrow_start = (x + 30, y + h//2)
-                        arrow_end = (x + w - 20, y + h//2)
-                        
-                        # Draw horizontal line
-                        cv2.line(img, (x + 30, y + h//2 - 15), (x + 30, y + h//2), WHITE, 3)
-                        
-                        # Draw the return arrow
-                        cv2.arrowedLine(img, arrow_start, arrow_end, WHITE, 3, tipLength=0.3)
-                    elif button.text == "←" or button.text == "↑" or button.text == "→" or button.text == "↓":
-                        # Arrow keys centered
-                        text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
-                        text_x = x + (w - text_size[0])//2
-                        text_y = y + h//2 + 15
-                        cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
-                    else:
-                        # Standard keys with better centering
-                        text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
-                        text_x = x + (w - text_size[0])//2
-                        text_y = y + h//2 + 15
-                        cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
-                      # Handle different key types
+                    # Create particle effect
+                    for _ in range(20):
+                        particles.append(Particle(x + w//2, y + h//2, 
+                                                (KEY_PRESS[0], KEY_PRESS[1], KEY_PRESS[2])))
+                    
+                    # Handle different key types
                     if button.text == "⌫":  # Backspace key
                         try:
                             # First attempt with regular backspace
@@ -484,33 +566,80 @@ while True:
                 # Show hover indicator when finger is over button but not pinching
                 elif 'is_pinching' in locals() and not is_pinching and not in_cooldown:
                     cv2.rectangle(img, (x, y + h - 5), (x + w, y + h), YELLOW, cv2.FILLED)
-      # Display the text box - larger, more visible box at the bottom
-    cv2.rectangle(img, (50, 550), (1200, 650), DARK_BG, cv2.FILLED)  # Dark background
-    cv2.rectangle(img, (50, 550), (1200, 650), ACCENT, 3)  # Accent border
+    
+    # Create a modern text display area with a futuristic design
+    # Drop shadow for text box
+    shadow_offset = 8
+    cv2.rectangle(img, (50+shadow_offset, 550+shadow_offset), 
+                 (1200+shadow_offset, 650+shadow_offset), (20, 20, 20), cv2.FILLED)
+                 
+    # Main text box with gradient
+    img = get_key_gradient(img, 50, 550, 1150, 100, 
+                           (KEY_DARK[0]//2, KEY_DARK[1]//2, KEY_DARK[2]//2),
+                           KEY_DARK, vertical=False)
+    
+    # Border with accent color
+    cv2.rectangle(img, (50, 550), (1200, 650), ACCENT, 2)
+    
+    # Add glowing accent corners for futuristic look
+    corner_size = 15
+    # Top left corner
+    cv2.line(img, (50, 550), (50+corner_size, 550), ACCENT, 3)
+    cv2.line(img, (50, 550), (50, 550+corner_size), ACCENT, 3)
+    # Top right corner
+    cv2.line(img, (1200, 550), (1200-corner_size, 550), ACCENT, 3)
+    cv2.line(img, (1200, 550), (1200, 550+corner_size), ACCENT, 3)
+    # Bottom left corner
+    cv2.line(img, (50, 650), (50+corner_size, 650), ACCENT, 3)
+    cv2.line(img, (50, 650), (50, 650-corner_size), ACCENT, 3)
+    # Bottom right corner
+    cv2.line(img, (1200, 650), (1200-corner_size, 650), ACCENT, 3)
+    cv2.line(img, (1200, 650), (1200, 650-corner_size), ACCENT, 3)
     
     # Limit text display to fit in the box (show last 40 characters if longer)
     displayText = finalText[-40:] if len(finalText) > 40 else finalText
     
     # Draw the text with better visibility
     cv2.putText(img, displayText, (60, 610),  # Position text in the middle of the box
-                cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
-      # Add a label for the text box
+                cv2.FONT_HERSHEY_SIMPLEX, 1.5, WHITE, 2)
+    
+    # Add a label for the text box
     cv2.putText(img, "Your Text:", (60, 540), 
                 cv2.FONT_HERSHEY_PLAIN, 2, ACCENT, 2)
-                  # Add usage instructions at the top of the screen
-    cv2.rectangle(img, (50, 10), (1200, 40), DARK_BG, cv2.FILLED)
-    cv2.putText(img, "Place index finger over key and HOLD pinch with thumb to type", (60, 30), 
-                cv2.FONT_HERSHEY_PLAIN, 1.5, LIGHT_TEXT, 2)
-    cv2.putText(img, "Press 'q' to quit", (950, 30),
-                cv2.FONT_HERSHEY_PLAIN, 1.5, LIGHT_TEXT, 2)
-      # Show pinch progress indicator at the top right corner (much smaller and out of the way)
+                
+    # Add modern usage instructions with futuristic design
+    instruction_y = 20
+    cv2.rectangle(img, (20, instruction_y-10), (700, instruction_y+30), (30, 30, 40), cv2.FILLED)
+    cv2.rectangle(img, (20, instruction_y-10), (700, instruction_y+30), KEY_BORDER, 1)
+    cv2.putText(img, "Place index finger over key & pinch with thumb to type", (30, instruction_y+15), 
+                cv2.FONT_HERSHEY_PLAIN, 1.2, LIGHT_TEXT, 2)
+    
+    # Add quit instruction
+    cv2.putText(img, "Press 'q' to quit", (1000, instruction_y+15),
+                cv2.FONT_HERSHEY_PLAIN, 1.2, LIGHT_TEXT, 2)
+    
+    # Show pinch progress indicator as a circular meter
     if current_pinch_frames > 0:
-        # Small progress indicator that doesn't block the keyboard
-        progress_width = int((current_pinch_frames / HOLD_FRAMES) * 100)
-        cv2.rectangle(img, (1150, 50), (1150 + progress_width, 70), GREEN, cv2.FILLED)
-        cv2.rectangle(img, (1150, 50), (1250, 70), ACCENT, 2)
-        cv2.putText(img, "PINCH", (1155, 65), cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 1)
-      # Show image with modern title
+        # Draw circular progress indicator
+        center = (60, 220)
+        radius = 30
+        # Background circle
+        cv2.circle(img, center, radius, (40, 40, 50), cv2.FILLED)
+        cv2.circle(img, center, radius, KEY_BORDER, 2)
+        # Progress arc
+        progress = current_pinch_frames / HOLD_FRAMES
+        end_angle = int(360 * progress)
+        # Draw arc segments to simulate progress
+        for angle in range(0, end_angle, 6):
+            x1 = int(center[0] + radius * np.cos(np.radians(angle)))
+            y1 = int(center[1] + radius * np.sin(np.radians(angle)))
+            x2 = int(center[0] + radius * np.cos(np.radians(angle+5)))
+            y2 = int(center[1] + radius * np.sin(np.radians(angle+5)))
+            cv2.line(img, (x1, y1), (x2, y2), GREEN, 3)
+        # Label
+        cv2.putText(img, "PINCH", (center[0]-25, center[1]+50), cv2.FONT_HERSHEY_PLAIN, 1.2, LIGHT_TEXT, 2)
+    
+    # Show image with window name
     cv2.imshow("AI Virtual Keyboard - Modern Edition", img)
     
     # Break the loop if 'q' is pressed

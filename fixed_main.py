@@ -228,7 +228,8 @@ while True:
             
             # Calculate euclidean distance for more accuracy
             euclidean_distance = np.sqrt(vertical_distance**2 + horizontal_distance**2)
-              # Draw line between thumb and index finger
+            
+            # Draw line between thumb and index finger
             cv2.line(img, (thumb_tip[0], thumb_tip[1]), (index_tip[0], index_tip[1]), 
                     ACCENT, 3)
             
@@ -284,7 +285,8 @@ while True:
             # Check if index finger tip is over button
             if x < index_tip[0] < x + w and y < index_tip[1] < y + h:
                 current_time = time()
-                  # Highlight button with lighter color when hovering
+                
+                # Highlight button with lighter color when hovering
                 cv2.rectangle(img, (x - 5, y - 5), (x + w + 5, y + h + 5), KEY_LIGHT, cv2.FILLED)
                 cv2.putText(img, button.text, (x + 20, y + 65),
                             cv2.FONT_HERSHEY_PLAIN, 4, DARK_BG, 4)
@@ -308,7 +310,8 @@ while True:
                     
                     # Set cooldown for this key
                     key_cooldown[button.text] = current_time
-                    button.pressed = True                      # Visual feedback (turn button blue when clicked)
+                    button.pressed = True
+                    # Visual feedback (turn button blue when clicked)
                     cv2.rectangle(img, button.pos, (x + w, y + h), KEY_PRESS, cv2.FILLED)
                     
                     # Keep consistent text positioning when clicked
@@ -347,7 +350,7 @@ while True:
                         text_x = x + (w - text_size[0])//2
                         text_y = y + h//2 + 15
                         cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
-                      # Handle different key types
+                    # Handle different key types
                     if button.text == "⌫":  # Backspace key
                         try:
                             # First attempt with regular backspace
@@ -484,9 +487,15 @@ while True:
                 # Show hover indicator when finger is over button but not pinching
                 elif 'is_pinching' in locals() and not is_pinching and not in_cooldown:
                     cv2.rectangle(img, (x, y + h - 5), (x + w, y + h), YELLOW, cv2.FILLED)
-      # Display the text box - larger, more visible box at the bottom
-    cv2.rectangle(img, (50, 550), (1200, 650), DARK_BG, cv2.FILLED)  # Dark background
-    cv2.rectangle(img, (50, 550), (1200, 650), ACCENT, 3)  # Accent border
+    
+    # Display the text box with modern styling
+    # Create a gradient text box background
+    img = get_key_gradient(img, 50, 550, 1150, 100, 
+                         (KEY_DARK[0]//2, KEY_DARK[1]//2, KEY_DARK[2]//2),
+                         KEY_DARK, vertical=False)
+    
+    # Add border with accent color
+    cv2.rectangle(img, (50, 550), (1200, 650), ACCENT, 2)
     
     # Limit text display to fit in the box (show last 40 characters if longer)
     displayText = finalText[-40:] if len(finalText) > 40 else finalText
@@ -494,23 +503,27 @@ while True:
     # Draw the text with better visibility
     cv2.putText(img, displayText, (60, 610),  # Position text in the middle of the box
                 cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
-      # Add a label for the text box
+    
+    # Add a label for the text box
     cv2.putText(img, "Your Text:", (60, 540), 
                 cv2.FONT_HERSHEY_PLAIN, 2, ACCENT, 2)
-                  # Add usage instructions at the top of the screen
+    
+    # Add usage instructions at the top of the screen
     cv2.rectangle(img, (50, 10), (1200, 40), DARK_BG, cv2.FILLED)
     cv2.putText(img, "Place index finger over key and HOLD pinch with thumb to type", (60, 30), 
                 cv2.FONT_HERSHEY_PLAIN, 1.5, LIGHT_TEXT, 2)
     cv2.putText(img, "Press 'q' to quit", (950, 30),
                 cv2.FONT_HERSHEY_PLAIN, 1.5, LIGHT_TEXT, 2)
-      # Show pinch progress indicator at the top right corner (much smaller and out of the way)
+    
+    # Show pinch progress indicator at the top right corner (much smaller and out of the way)
     if current_pinch_frames > 0:
         # Small progress indicator that doesn't block the keyboard
         progress_width = int((current_pinch_frames / HOLD_FRAMES) * 100)
         cv2.rectangle(img, (1150, 50), (1150 + progress_width, 70), GREEN, cv2.FILLED)
         cv2.rectangle(img, (1150, 50), (1250, 70), ACCENT, 2)
         cv2.putText(img, "PINCH", (1155, 65), cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 1)
-      # Show image with modern title
+    
+    # Show image
     cv2.imshow("AI Virtual Keyboard - Modern Edition", img)
     
     # Break the loop if 'q' is pressed
