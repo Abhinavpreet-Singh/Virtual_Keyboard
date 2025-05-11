@@ -13,11 +13,12 @@ cap.set(4, 720)
 # Hand Detector - increased confidence for better detection
 detector = HandDetector(detectionCon=0.9, maxHands=1)
 
-# Keyboard Layout
-keys = [["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-        ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";"],
-        ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", "<"],
-        ["SPACE"]]  # Added spacebar row
+# Keyboard Layout - Improved, straight layout with all necessary keys
+keys = [["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "⌫"],
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "'"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";",],
+        ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", ],
+        ["SPACE",]]  # Complete keyboard layout with function keys
 
 finalText = ""
 keyboard = Controller()
@@ -60,24 +61,72 @@ def drawAll(img, buttonList):
                           20, rt=0)
         cv2.rectangle(img, button.pos, (x + w, y + h), CYAN, cv2.FILLED)  # Cyan keys
         
-        # Center text for spacebar, regular positioning for other keys
+        # Special cases for different key types
         if button.text == "SPACE":
-            cv2.putText(img, button.text, (x + w//2 - 60, y + 65),
-                        cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)  # Black text
+            # Center text for spacebar
+            cv2.putText(img, button.text, (x + w//2 - 60, y + h//2 + 15),
+                        cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)  # Black text, better centered
+        elif button.text == "⌫":
+            # Backspace button with improved design - clean left arrow
+            arrow_start = (x + w - 25, y + h//2)
+            arrow_end = (x + 25, y + h//2)
+            
+            # Draw the main arrow
+            cv2.arrowedLine(img, arrow_start, arrow_end, BLACK, 3, tipLength=0.3)
+            
+            # Add a small vertical line at the right to complete the backspace symbol
+            cv2.line(img, (x + w - 25, y + h//2 - 15), (x + w - 25, y + h//2 + 15), BLACK, 3)
+        elif button.text == "⏎":
+            # Enter key with arrow symbol
+            arrow_start = (x + 30, y + h//2)
+            arrow_end = (x + w - 20, y + h//2)
+            
+            # Draw horizontal line
+            cv2.line(img, (x + 30, y + h//2 - 15), (x + 30, y + h//2), BLACK, 3)
+            
+            # Draw the return arrow
+            cv2.arrowedLine(img, arrow_start, arrow_end, BLACK, 3, tipLength=0.3)
+        elif button.text == "←" or button.text == "↑" or button.text == "→" or button.text == "↓":
+            # Arrow keys centered
+            text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
+            text_x = x + (w - text_size[0])//2
+            text_y = y + h//2 + 15
+            cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)
         else:
-            cv2.putText(img, button.text, (x + 20, y + 65),
-                        cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)  # Black text
+            # Standard keys with better centering
+            text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
+            text_x = x + (w - text_size[0])//2
+            text_y = y + h//2 + 15
+            cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)
     return img
 
-# Create Buttons
+# Create Buttons - improved layout with more consistency and proper spacing
 buttonList = []
 for i in range(len(keys)):
     for j, key in enumerate(keys[i]):
-        if key == "SPACE":
+        # Base position calculations - ensure straight and consistent alignment
+        x_pos = 100 * j + 50
+        y_pos = 100 * i + 50
+        
+        # Create a straight keyboard layout with consistent spacing
+        if key == "⌫":
+            # Make backspace key wider and more visible
+            buttonList.append(Button([x_pos, y_pos], key, size=[120, 85]))
+        elif key == "⏎":
+            # Make enter key wider and more visible
+            buttonList.append(Button([x_pos, y_pos], key, size=[120, 85]))
+        elif key == "SPACE":
             # Make spacebar wider and position it centrally 
-            buttonList.append(Button([400, 100 * i + 50], key, size=[400, 85]))
+            buttonList.append(Button([250, y_pos], key, size=[450, 85]))
+        elif key == "←" or key == "↑" or key == "→" or key == "↓":
+            # Arrow keys
+            buttonList.append(Button([x_pos, y_pos], key, size=[90, 85]))
+        elif key == "CTRL" or key == "ALT":
+            # Add function keys with appropriate size
+            buttonList.append(Button([x_pos, y_pos], key, size=[150, 85]))
         else:
-            buttonList.append(Button([100 * j + 50, 100 * i + 50], key))
+            # Standard sized keys with consistent spacing
+            buttonList.append(Button([x_pos, y_pos], key, size=[90, 85]))
 
 # Main Loop
 while True:
@@ -206,22 +255,62 @@ while True:
                     # Set cooldown for this key
                     key_cooldown[button.text] = current_time
                     button.pressed = True
-                    
-                    # Visual feedback (turn button navy blue when clicked)
+                      # Visual feedback (turn button navy blue when clicked)
                     cv2.rectangle(img, button.pos, (x + w, y + h), NAVY, cv2.FILLED)
-                    cv2.putText(img, button.text, (x + 20, y + 65),
-                                cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
                     
-                    # Handle different key types
-                    if button.text == '<':
-                        # Backspace handling
+                    # Keep consistent text positioning when clicked
+                    if button.text == "SPACE":
+                        cv2.putText(img, button.text, (x + w//2 - 60, y + h//2 + 15),
+                                    cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
+                    elif button.text == "⌫":
+                        # Draw improved backspace symbol with white color
+                        arrow_start = (x + w - 25, y + h//2)
+                        arrow_end = (x + 25, y + h//2)
+                        
+                        # Draw the main arrow line
+                        cv2.arrowedLine(img, arrow_start, arrow_end, WHITE, 3, tipLength=0.3)
+                        
+                        # Add a small vertical line at the right to complete the backspace symbol
+                        cv2.line(img, (x + w - 25, y + h//2 - 15), (x + w - 25, y + h//2 + 15), WHITE, 3)
+                    elif button.text == "⏎":
+                        # Enter key with white arrow symbol
+                        arrow_start = (x + 30, y + h//2)
+                        arrow_end = (x + w - 20, y + h//2)
+                        
+                        # Draw horizontal line
+                        cv2.line(img, (x + 30, y + h//2 - 15), (x + 30, y + h//2), WHITE, 3)
+                        
+                        # Draw the return arrow
+                        cv2.arrowedLine(img, arrow_start, arrow_end, WHITE, 3, tipLength=0.3)
+                    elif button.text == "←" or button.text == "↑" or button.text == "→" or button.text == "↓":
+                        # Arrow keys centered
+                        text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
+                        text_x = x + (w - text_size[0])//2
+                        text_y = y + h//2 + 15
+                        cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
+                    else:
+                        # Standard keys with better centering
+                        text_size = cv2.getTextSize(button.text, cv2.FONT_HERSHEY_PLAIN, 4, 4)[0]
+                        text_x = x + (w - text_size[0])//2
+                        text_y = y + h//2 + 15
+                        cv2.putText(img, button.text, (text_x, text_y), cv2.FONT_HERSHEY_PLAIN, 4, WHITE, 4)
+                      # Handle different key types
+                    if button.text == "⌫":  # Backspace key
                         try:
+                            # First attempt with regular backspace
                             keyboard.press(Key.backspace)
+                            sleep(0.03)  # Small delay for reliable operation
                             keyboard.release(Key.backspace)
                             print("Backspace pressed")
                         except Exception as e:
                             print(f"Backspace error: {e}")
+                            try:
+                                # Try alternate method
+                                keyboard.type('\b')
+                            except:
+                                pass
                                 
+                        # Always update display text
                         if len(finalText) > 0:
                             finalText = finalText[:-1]
                             
@@ -243,6 +332,70 @@ while True:
                                 
                         finalText += " "
                         
+                    elif button.text == "⏎":
+                        try:
+                            keyboard.press(Key.enter)
+                            sleep(0.05)
+                            keyboard.release(Key.enter)
+                            print("ENTER pressed")
+                        except Exception as e:
+                            print(f"ENTER error: {e}")
+                        finalText += "\n" # Visual representation in text box
+                        
+                    elif button.text == "↑":
+                        try:
+                            keyboard.press(Key.up)
+                            sleep(0.05)
+                            keyboard.release(Key.up)
+                            print("UP arrow pressed")
+                        except Exception as e:
+                            print(f"UP arrow error: {e}")
+                            
+                    elif button.text == "↓":
+                        try:
+                            keyboard.press(Key.down)
+                            sleep(0.05)
+                            keyboard.release(Key.down)
+                            print("DOWN arrow pressed")
+                        except Exception as e:
+                            print(f"DOWN arrow error: {e}")
+                            
+                    elif button.text == "←":
+                        try:
+                            keyboard.press(Key.left)
+                            sleep(0.05)
+                            keyboard.release(Key.left)
+                            print("LEFT arrow pressed")
+                        except Exception as e:
+                            print(f"LEFT arrow error: {e}")
+                            
+                    elif button.text == "→":
+                        try:
+                            keyboard.press(Key.right)
+                            sleep(0.05)
+                            keyboard.release(Key.right)
+                            print("RIGHT arrow pressed")
+                        except Exception as e:
+                            print(f"RIGHT arrow error: {e}")
+                            
+                    elif button.text == "CTRL":
+                        try:
+                            keyboard.press(Key.ctrl)
+                            sleep(0.05)
+                            keyboard.release(Key.ctrl)
+                            print("CTRL pressed")
+                        except Exception as e:
+                            print(f"CTRL error: {e}")
+                            
+                    elif button.text == "ALT":
+                        try:
+                            keyboard.press(Key.alt)
+                            sleep(0.05)
+                            keyboard.release(Key.alt)
+                            print("ALT pressed")
+                        except Exception as e:
+                            print(f"ALT error: {e}")
+                    
                     else:
                         # Normal key press - try multiple methods for reliability
                         key_char = button.text.lower()  # Use lowercase for typing
@@ -293,76 +446,20 @@ while True:
     # Add a label for the text box
     cv2.putText(img, "Your Text:", (60, 540), 
                 cv2.FONT_HERSHEY_PLAIN, 2, CYAN, 2)
-                
-    # Add usage instructions at the top of the screen
+                  # Add usage instructions at the top of the screen
     cv2.rectangle(img, (50, 10), (1200, 40), BLACK, cv2.FILLED)
     cv2.putText(img, "Place index finger over key and HOLD pinch with thumb to type", (60, 30), 
                 cv2.FONT_HERSHEY_PLAIN, 1.5, CYAN, 2)
     cv2.putText(img, "Press 'q' to quit", (950, 30),
                 cv2.FONT_HERSHEY_PLAIN, 1.5, CYAN, 2)
-                
-    # Add visual guide for vertical pinch gesture in the corner of the screen
-    guide_size = 200
-    guide_position = (img.shape[1] - guide_size - 20, 70)
     
-    # Create a small guide area
-    cv2.rectangle(img, guide_position, (guide_position[0] + guide_size, guide_position[1] + guide_size), 
-                 BLACK, cv2.FILLED)
-    cv2.rectangle(img, guide_position, (guide_position[0] + guide_size, guide_position[1] + guide_size), 
-                 CYAN, 2)
-    
-    # Draw thumb and index finger for vertical pinch demonstration
-    thumb_pos = (guide_position[0] + 100, guide_position[1] + 140)  # Thumb below
-    index_pos = (guide_position[0] + 100, guide_position[1] + 60)   # Index above
-    
-    # Draw fingers
-    cv2.circle(img, thumb_pos, 20, CYAN, cv2.FILLED)  # Thumb
-    cv2.circle(img, index_pos, 15, CYAN, cv2.FILLED)  # Index
-    
-    # Draw arrows showing vertical pinch motion
-    arrow_start1 = (thumb_pos[0], thumb_pos[1] - 20)
-    arrow_end1 = (thumb_pos[0], thumb_pos[1] - 40)
-    arrow_start2 = (index_pos[0], index_pos[1] + 15)
-    arrow_end2 = (index_pos[0], index_pos[1] + 40)
-    
-    cv2.arrowedLine(img, arrow_start1, arrow_end1, WHITE, 3, tipLength=0.3)
-    cv2.arrowedLine(img, arrow_start2, arrow_end2, WHITE, 3, tipLength=0.3)
-    
-    # Draw vertical distance line
-    cv2.line(img, (guide_position[0] + 120, thumb_pos[1]), 
-             (guide_position[0] + 120, index_pos[1]), GREEN, 2)
-    
-    # Add labels
-    cv2.putText(img, "Thumb", (thumb_pos[0] - 60, thumb_pos[1]), 
-               cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 2)
-    cv2.putText(img, "Index", (index_pos[0] - 60, index_pos[1]), 
-               cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 2)
-    cv2.putText(img, "Pinch Vertically", (guide_position[0] + 30, guide_position[1] + 180), 
-               cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 2)
-               
-    # Add "HOLD" timing indicator
-    hold_box_width = 160
-    hold_box_height = 30
-    hold_box_x = guide_position[0] + 20
-    hold_box_y = guide_position[1] + 20
-    
-    # Draw "HOLD" box
-    cv2.rectangle(img, (hold_box_x, hold_box_y), 
-                 (hold_box_x + hold_box_width, hold_box_y + hold_box_height), 
-                 BLACK, cv2.FILLED)
-    cv2.rectangle(img, (hold_box_x, hold_box_y), 
-                 (hold_box_x + hold_box_width, hold_box_y + hold_box_height), 
-                 WHITE, 1)
-    
-    # Show hold progress animation
+    # Show pinch progress indicator at the top right corner (much smaller and out of the way)
     if current_pinch_frames > 0:
-        progress_width = int((current_pinch_frames / HOLD_FRAMES) * hold_box_width)
-        cv2.rectangle(img, (hold_box_x, hold_box_y), 
-                     (hold_box_x + progress_width, hold_box_y + hold_box_height), 
-                     GREEN, cv2.FILLED)
-    
-    cv2.putText(img, "HOLD PINCH", (hold_box_x + 20, hold_box_y + 20),
-               cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 1)
+        # Small progress indicator that doesn't block the keyboard
+        progress_width = int((current_pinch_frames / HOLD_FRAMES) * 100)
+        cv2.rectangle(img, (1150, 50), (1150 + progress_width, 70), GREEN, cv2.FILLED)
+        cv2.rectangle(img, (1150, 50), (1250, 70), CYAN, 2)
+        cv2.putText(img, "PINCH", (1155, 65), cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 1)
     
     # Show image
     cv2.imshow("Virtual Keyboard", img)
