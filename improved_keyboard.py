@@ -10,14 +10,15 @@ cap = cv2.VideoCapture(0)
 cap.set(3, 1280)
 cap.set(4, 720)
 
-# Hand Detector - increased confidence for better detection
+# Hand Detector with higher confidence for better detection
 detector = HandDetector(detectionCon=0.9, maxHands=1)
 
-# Keyboard Layout
+# Keyboard Layout - Redesigned for better accessibility
+# Top row in a C shape for easier reach
 keys = [["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
         ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";"],
-        ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", "<"],
-        ["SPACE"]]  # Added spacebar row
+        ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"],
+        ["<", "SPACE", "ENTER"]]  # Added ENTER key and moved backspace to bottom row
 
 finalText = ""
 keyboard = Controller()
@@ -26,22 +27,19 @@ keyboard = Controller()
 CYAN = (255, 255, 0)         # Light cyan - normal keys
 LIGHT_CYAN = (255, 255, 128)  # Very light cyan - hover effect
 NAVY = (128, 128, 0)         # Dark cyan/navy - clicked keys
-BLACK = (0, 0, 0)           # Black for text
-WHITE = (255, 255, 255)     # White for text display
-GREEN = (0, 255, 0)         # Green for success indicators
-RED = (0, 0, 255)           # Red for alerts/warnings
-YELLOW = (0, 255, 255)      # Yellow for intermediate states
+BLACK = (0, 0, 0)            # Black for text
+WHITE = (255, 255, 255)      # White for text display
+GREEN = (0, 255, 0)          # Green for success indicators
+RED = (0, 0, 255)            # Red for alerts/warnings
+YELLOW = (0, 255, 255)       # Yellow for intermediate states
 
-# Pinch detection parameters - stricter requirements
-VERTICAL_THRESHOLD = 40     # Maximum vertical distance for pinch detection
-PINCH_THRESHOLD = 45        # Maximum Euclidean distance for pinch detection
-HOLD_FRAMES = 5             # Number of frames a pinch must be stable before registering
-current_pinch_frames = 0    # Counter for stable pinch frames
-last_pinch_time = 0         # Time of last successful pinch
-
-# Debounce system - stores the last time each key was pressed
-key_cooldown = {}           # Dictionary to track key press cooldown
-KEY_COOLDOWN_TIME = 0.8     # Seconds to wait before allowing the same key again
+# Pinch detection parameters - adjusted for better performance
+VERTICAL_THRESHOLD = 50       # Maximum vertical distance for pinch detection
+PINCH_THRESHOLD = 45          # Maximum distance for pinch detection (smaller value = more precise pinch needed)
+HOLD_FRAMES = 5               # Number of consecutive frames a pinch must be detected before registering
+current_pinch_frames = 0      # Counter for stable pinch frames
+pinch_cooldown = {}           # Dictionary to track last pinch time for each key
+PINCH_COOLDOWN_TIME = 0.5     # Time in seconds before allowing the same key to be pinched again
 
 # Button Class for Virtual Keys
 class Button():
@@ -64,6 +62,9 @@ def drawAll(img, buttonList):
         if button.text == "SPACE":
             cv2.putText(img, button.text, (x + w//2 - 60, y + 65),
                         cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)  # Black text
+        elif button.text == "ENTER":
+            cv2.putText(img, button.text, (x + 20, y + 65),
+                        cv2.FONT_HERSHEY_PLAIN, 3, BLACK, 4)  # Black text
         else:
             cv2.putText(img, button.text, (x + 20, y + 65),
                         cv2.FONT_HERSHEY_PLAIN, 4, BLACK, 4)  # Black text
@@ -73,11 +74,28 @@ def drawAll(img, buttonList):
 buttonList = []
 for i in range(len(keys)):
     for j, key in enumerate(keys[i]):
-        if key == "SPACE":
+        # Create a concave curved keyboard layout with top row brought lower
+        if i == 0:  # Top row - create a concave curve
+            # Make the center higher than the edges
+            curve_offset = 80 - abs(j - 4.5) * 5  # Higher in the middle (more extreme curve)
+            y_pos = 100 * i + 80 + curve_offset
+            buttonList.append(Button([100 * j + 50, y_pos], key))
+        elif key == "SPACE":
             # Make spacebar wider and position it centrally 
             buttonList.append(Button([400, 100 * i + 50], key, size=[400, 85]))
+        elif key == "ENTER":
+            # Make ENTER key wider
+            buttonList.append(Button([850, 100 * i + 50], key, size=[150, 85]))
+        elif key == "<":
+            # Make backspace key slightly wider
+            buttonList.append(Button([100, 100 * i + 50], key, size=[150, 85]))
         else:
             buttonList.append(Button([100 * j + 50, 100 * i + 50], key))
+
+# Last pressed state
+last_pinch_state = False
+last_pressed_button = None
+last_key_time = 0
 
 # Main Loop
 while True:
@@ -96,24 +114,25 @@ while True:
     # Draw keyboard
     img = drawAll(img, buttonList)
     
-    # Reset button states
-    for button in buttonList:
-        button.pressed = False
+    # Reset pinch detection for this frame
+    current_pinch = False
+    current_button = None
     
     # Check for hand position
     if hands:
         hand = hands[0]  # First hand
         lmList = hand["lmList"]  # List of 21 landmarks
         
-        # Get important landmarks
+        # Get important finger landmarks
         thumb_tip = lmList[4]  # Thumb tip
         index_tip = lmList[8]  # Index finger tip
         middle_tip = lmList[12]  # Middle finger tip
         thumb_base = lmList[2]  # Thumb base (near wrist)
+        index_base = lmList[5]  # Index finger base
         
         # Draw circles on fingertips for visual feedback
-        cv2.circle(img, (thumb_tip[0], thumb_tip[1]), 10, WHITE, cv2.FILLED)
-        cv2.circle(img, (index_tip[0], index_tip[1]), 10, WHITE, cv2.FILLED)
+        cv2.circle(img, (thumb_tip[0], thumb_tip[1]), 12, WHITE, cv2.FILLED)
+        cv2.circle(img, (index_tip[0], index_tip[1]), 12, WHITE, cv2.FILLED)
         
         # Calculate distances for pinch detection
         try:
@@ -134,29 +153,27 @@ while True:
                      GREEN, 2)
             
             # Show distance measurements for debugging
-            cv2.putText(img, f"V: {int(vertical_distance)}px", (45, 100), 
-                        cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 2)
-            cv2.putText(img, f"D: {int(euclidean_distance)}px", (45, 130), 
+            cv2.putText(img, f"Distance: {int(euclidean_distance)}px", (45, 130), 
                         cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 2)
             
             # Check if thumb is raised relative to its base position
-            thumb_raised = (thumb_tip[1] < thumb_base[1] - 30)
+            thumb_raised = (thumb_tip[1] < thumb_base[1] - 20)
             
-            # Strict pinch detection with multiple conditions:
-            # 1. Vertical distance must be small 
-            # 2. Euclidean distance must be small
-            # 3. Thumb must be raised from base position
-            is_pinching = (vertical_distance < VERTICAL_THRESHOLD and 
-                           euclidean_distance < PINCH_THRESHOLD and 
-                           thumb_raised)
+            # Improved pinch detection logic
+            # 1. Vertical distance should be small (vertical pinch)
+            # 2. Overall distance should be small
+            # 3. Thumb should be raised from its base position
+            is_pinching = (euclidean_distance < PINCH_THRESHOLD and vertical_distance < VERTICAL_THRESHOLD and thumb_raised)
             
             # Visual indicator for pinch detection status
             if is_pinching:
-                cv2.putText(img, "PINCHING", (45, 180), 
+                cv2.putText(img, "PINCH DETECTED", (45, 180), 
                         cv2.FONT_HERSHEY_PLAIN, 2, GREEN, 3)
                 
                 # Only count consecutive pinch frames
                 current_pinch_frames += 1
+                if current_pinch_frames > HOLD_FRAMES:
+                    current_pinch = True
             else:
                 # Reset consecutive frame counter if pinch broken
                 current_pinch_frames = 0
@@ -188,23 +205,23 @@ while True:
                 
                 # Check if button is in cooldown
                 in_cooldown = False
-                if button.text in key_cooldown:
-                    time_elapsed = current_time - key_cooldown[button.text]
-                    if time_elapsed < KEY_COOLDOWN_TIME:
+                if button.text in pinch_cooldown:
+                    time_elapsed = current_time - pinch_cooldown[button.text]
+                    if time_elapsed < PINCH_COOLDOWN_TIME:
                         in_cooldown = True
                         
                         # Show cooldown progress bar
-                        remaining = KEY_COOLDOWN_TIME - time_elapsed
-                        progress = int((remaining / KEY_COOLDOWN_TIME) * w)
+                        remaining = PINCH_COOLDOWN_TIME - time_elapsed
+                        progress = int((remaining / PINCH_COOLDOWN_TIME) * w)
                         cv2.rectangle(img, (x, y + h - 5), (x + progress, y + h), RED, cv2.FILLED)
                 
                 # If pinch is stable and not in cooldown
-                if current_pinch_frames >= HOLD_FRAMES and not in_cooldown:
+                if current_pinch and not in_cooldown:
                     # Reset pinch frames to avoid multiple triggers
                     current_pinch_frames = 0
                     
                     # Set cooldown for this key
-                    key_cooldown[button.text] = current_time
+                    pinch_cooldown[button.text] = current_time
                     button.pressed = True
                     
                     # Visual feedback (turn button navy blue when clicked)
@@ -217,6 +234,7 @@ while True:
                         # Backspace handling
                         try:
                             keyboard.press(Key.backspace)
+                            sleep(0.02)
                             keyboard.release(Key.backspace)
                             print("Backspace pressed")
                         except Exception as e:
@@ -224,49 +242,56 @@ while True:
                                 
                         if len(finalText) > 0:
                             finalText = finalText[:-1]
-                            
                     elif button.text == "SPACE":
-                        # Space handling - more reliable approach
+                        # Space handling
                         try:
-                            # Try multiple approaches to ensure space works
+                            # Multiple approaches to ensure space works
                             keyboard.press(Key.space)
-                            sleep(0.05)  # Brief delay
+                            sleep(0.02)
                             keyboard.release(Key.space)
                             print("Space pressed")
                         except Exception as e:
                             print(f"Space error: {e}")
                             try:
-                                # Fallback method
+                                # Fallback
                                 keyboard.type(" ")
                             except:
                                 pass
                                 
                         finalText += " "
-                        
+                    elif button.text == "ENTER":
+                        # Enter handling
+                        try:
+                            keyboard.press(Key.enter)
+                            sleep(0.02)
+                            keyboard.release(Key.enter)
+                            print("Enter pressed")
+                        except Exception as e:
+                            print(f"Enter error: {e}")
+                            
+                        finalText += "\n"
                     else:
                         # Normal key press - try multiple methods for reliability
                         key_char = button.text.lower()  # Use lowercase for typing
                         
                         try:
-                            # First method - type directly
+                            # Type directly using pynput's type method
                             keyboard.type(key_char)
                             print(f"Typed key: {key_char}")
                         except Exception as e:
                             print(f"Type error: {e}")
-                            
-                            # Second method - press and release with delay
                             try:
+                                # Second approach: press and release with slight delay
                                 keyboard.press(key_char)
-                                sleep(0.05)  # Short delay 
+                                sleep(0.02)  # Brief delay
                                 keyboard.release(key_char)
-                                print(f"Press-release: {key_char}")
+                                print(f"Press-Release: {key_char}")
                             except Exception as e2:
-                                print(f"Press-release error: {e2}")
+                                print(f"Press-Release error: {e2}")
                                 
-                        # Update display text regardless of typing success
                         finalText += button.text
                         
-                    # Add a brief delay after successful key press
+                    # Add a brief delay after successful key press for stability
                     sleep(0.1)
                     
                 # Show "almost pinching" indicator
@@ -296,7 +321,7 @@ while True:
                 
     # Add usage instructions at the top of the screen
     cv2.rectangle(img, (50, 10), (1200, 40), BLACK, cv2.FILLED)
-    cv2.putText(img, "Place index finger over key and HOLD pinch with thumb to type", (60, 30), 
+    cv2.putText(img, "Place index finger over key and pinch with thumb to type", (60, 30), 
                 cv2.FONT_HERSHEY_PLAIN, 1.5, CYAN, 2)
     cv2.putText(img, "Press 'q' to quit", (950, 30),
                 cv2.FONT_HERSHEY_PLAIN, 1.5, CYAN, 2)
@@ -337,32 +362,6 @@ while True:
                cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 2)
     cv2.putText(img, "Index", (index_pos[0] - 60, index_pos[1]), 
                cv2.FONT_HERSHEY_PLAIN, 1, WHITE, 2)
-    cv2.putText(img, "Pinch Vertically", (guide_position[0] + 30, guide_position[1] + 180), 
-               cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 2)
-               
-    # Add "HOLD" timing indicator
-    hold_box_width = 160
-    hold_box_height = 30
-    hold_box_x = guide_position[0] + 20
-    hold_box_y = guide_position[1] + 20
-    
-    # Draw "HOLD" box
-    cv2.rectangle(img, (hold_box_x, hold_box_y), 
-                 (hold_box_x + hold_box_width, hold_box_y + hold_box_height), 
-                 BLACK, cv2.FILLED)
-    cv2.rectangle(img, (hold_box_x, hold_box_y), 
-                 (hold_box_x + hold_box_width, hold_box_y + hold_box_height), 
-                 WHITE, 1)
-    
-    # Show hold progress animation
-    if current_pinch_frames > 0:
-        progress_width = int((current_pinch_frames / HOLD_FRAMES) * hold_box_width)
-        cv2.rectangle(img, (hold_box_x, hold_box_y), 
-                     (hold_box_x + progress_width, hold_box_y + hold_box_height), 
-                     GREEN, cv2.FILLED)
-    
-    cv2.putText(img, "HOLD PINCH", (hold_box_x + 20, hold_box_y + 20),
-               cv2.FONT_HERSHEY_PLAIN, 1.5, WHITE, 1)
     
     # Show image
     cv2.imshow("Virtual Keyboard", img)
